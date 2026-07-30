@@ -1,0 +1,695 @@
+"""
+LIBRARY MANAGEMENT SYSTEM
+Complete implementation in a single file
+"""
+
+from datetime import datetime
+import sys
+
+
+class Book:
+    """Represents a book in the library"""
+    
+    def __init__(self, book_id, title, author, isbn, quantity=1):
+        """
+        Constructor for Book class
+        
+        Args:
+            book_id (str): Unique identifier for the book
+            title (str): Title of the book
+            author (str): Author of the book
+            isbn (str): ISBN number of the book
+            quantity (int): Number of copies available
+        """
+        self.__book_id = book_id  # Encapsulation - private field
+        self.__title = title
+        self.__author = author
+        self.__isbn = isbn
+        self.__quantity = quantity
+        self.__available_copies = quantity
+    
+    # Getter methods
+    def get_book_id(self):
+        return self.__book_id
+    
+    def get_title(self):
+        return self.__title
+    
+    def get_author(self):
+        return self.__author
+    
+    def get_isbn(self):
+        return self.__isbn
+    
+    def get_quantity(self):
+        return self.__quantity
+    
+    def get_available_copies(self):
+        return self.__available_copies
+    
+    # Setter methods
+    def set_quantity(self, quantity):
+        """Update the total quantity of the book"""
+        if quantity >= 0:
+            self.__quantity = quantity
+            if self.__available_copies > quantity:
+                self.__available_copies = quantity
+    
+    def set_available_copies(self, available_copies):
+        """Update the available copies"""
+        if 0 <= available_copies <= self.__quantity:
+            self.__available_copies = available_copies
+    
+    def issue_book(self):
+        """Decrease available copies when book is issued"""
+        if self.__available_copies > 0:
+            self.__available_copies -= 1
+            return True
+        return False
+    
+    def return_book(self):
+        """Increase available copies when book is returned"""
+        if self.__available_copies < self.__quantity:
+            self.__available_copies += 1
+            return True
+        return False
+    
+    def is_available(self):
+        """Check if the book is available for issue"""
+        return self.__available_copies > 0
+    
+    def __str__(self):
+        """String representation of the Book object"""
+        return (f"Book ID: {self.__book_id}\n"
+                f"Title: {self.__title}\n"
+                f"Author: {self.__author}\n"
+                f"ISBN: {self.__isbn}\n"
+                f"Total Copies: {self.__quantity}\n"
+                f"Available Copies: {self.__available_copies}")
+    
+    def to_string(self):
+        """Override of toString() equivalent"""
+        return f"Book[ID={self.__book_id}, Title={self.__title}, Author={self.__author}]"
+
+
+class Member:
+    """Represents a library member"""
+    
+    def __init__(self, member_id, name, email, phone):
+        """
+        Constructor for Member class
+        
+        Args:
+            member_id (str): Unique identifier for the member
+            name (str): Full name of the member
+            email (str): Email address of the member
+            phone (str): Phone number of the member
+        """
+        self.__member_id = member_id  # Encapsulation - private field
+        self.__name = name
+        self.__email = email
+        self.__phone = phone
+        self.__books_issued = []  # List to track books issued by this member
+    
+    # Getter methods
+    def get_member_id(self):
+        return self.__member_id
+    
+    def get_name(self):
+        return self.__name
+    
+    def get_email(self):
+        return self.__email
+    
+    def get_phone(self):
+        return self.__phone
+    
+    def get_books_issued(self):
+        return self.__books_issued
+    
+    # Setter methods
+    def set_email(self, email):
+        self.__email = email
+    
+    def set_phone(self, phone):
+        self.__phone = phone
+    
+    def add_issued_book(self, book_id):
+        """Add a book to member's issued list"""
+        if book_id not in self.__books_issued:
+            self.__books_issued.append(book_id)
+            return True
+        return False
+    
+    def remove_issued_book(self, book_id):
+        """Remove a book from member's issued list"""
+        if book_id in self.__books_issued:
+            self.__books_issued.remove(book_id)
+            return True
+        return False
+    
+    def get_issued_books_count(self):
+        """Get the number of books currently issued"""
+        return len(self.__books_issued)
+    
+    def __str__(self):
+        """String representation of the Member object"""
+        return (f"Member ID: {self.__member_id}\n"
+                f"Name: {self.__name}\n"
+                f"Email: {self.__email}\n"
+                f"Phone: {self.__phone}\n"
+                f"Books Issued: {len(self.__books_issued)}")
+    
+    def to_string(self):
+        """Override of toString() equivalent"""
+        return f"Member[ID={self.__member_id}, Name={self.__name}, Email={self.__email}]"
+
+
+class IssueRecord:
+    """Stores which member has borrowed which book"""
+    
+    def __init__(self, record_id, book_id, member_id, issue_date=None):
+        """
+        Constructor for IssueRecord class
+        
+        Args:
+            record_id (int): Unique identifier for the issue record
+            book_id (str): ID of the book being issued
+            member_id (str): ID of the member issuing the book
+            issue_date (datetime): Date when the book was issued
+        """
+        self.__record_id = record_id  # Encapsulation - private field
+        self.__book_id = book_id
+        self.__member_id = member_id
+        self.__issue_date = issue_date if issue_date else datetime.now()
+        self.__return_date = None
+        self.__is_returned = False
+    
+    # Getter methods
+    def get_record_id(self):
+        return self.__record_id
+    
+    def get_book_id(self):
+        return self.__book_id
+    
+    def get_member_id(self):
+        return self.__member_id
+    
+    def get_issue_date(self):
+        return self.__issue_date
+    
+    def get_return_date(self):
+        return self.__return_date
+    
+    def is_returned(self):
+        return self.__is_returned
+    
+    def return_book(self):
+        """Mark the book as returned"""
+        if not self.__is_returned:
+            self.__return_date = datetime.now()
+            self.__is_returned = True
+            return True
+        return False
+    
+    def __str__(self):
+        """String representation of the IssueRecord object"""
+        return (f"Record ID: {self.__record_id}\n"
+                f"Book ID: {self.__book_id}\n"
+                f"Member ID: {self.__member_id}\n"
+                f"Issue Date: {self.__issue_date.strftime('%Y-%m-%d %H:%M')}\n"
+                f"Return Date: {self.__return_date.strftime('%Y-%m-%d %H:%M') if self.__return_date else 'Not returned yet'}\n"
+                f"Status: {'Returned' if self.__is_returned else 'Issued'}")
+    
+    def to_string(self):
+        """Override of toString() equivalent"""
+        return (f"IssueRecord[ID={self.__record_id}, Book={self.__book_id}, "
+                f"Member={self.__member_id}, Returned={self.__is_returned}]")
+
+
+class Library:
+    """Contains the main library operations"""
+    
+    def __init__(self, name="Library Management System"):
+        """
+        Constructor for Library class
+        """
+        self.__name = name
+        self.__books = []  # ArrayList for Books
+        self.__members = []  # ArrayList for Members
+        self.__issue_records = []  # ArrayList for Issue Records
+        self.__record_counter = 1  # Counter for generating unique record IDs
+    
+    # Getter methods
+    def get_name(self):
+        return self.__name
+    
+    def get_books(self):
+        return self.__books
+    
+    def get_members(self):
+        return self.__members
+    
+    def get_issue_records(self):
+        return self.__issue_records
+    
+    # Book Management Methods
+    def add_book(self, book_id, title, author, isbn, quantity=1):
+        """
+        Add a new book to the library
+        
+        Returns:
+            bool: True if book was added successfully, False if book already exists
+        """
+        # Check if book already exists
+        if self.find_book_by_id(book_id):
+            print(f"Book with ID {book_id} already exists!")
+            return False
+        
+        book = Book(book_id, title, author, isbn, quantity)
+        self.__books.append(book)
+        print(f"Book '{title}' added successfully!")
+        return True
+    
+    def find_book_by_id(self, book_id):
+        """
+        Linear search to find a book by ID
+        
+        Returns:
+            Book object if found, None otherwise
+        """
+        for book in self.__books:
+            if book.get_book_id().lower() == book_id.lower():
+                return book
+        return None
+    
+    def find_books_by_title(self, title):
+        """
+        Search for books by title (partial match)
+        
+        Returns:
+            List of books matching the title
+        """
+        found_books = []
+        for book in self.__books:
+            if title.lower() in book.get_title().lower():
+                found_books.append(book)
+        return found_books
+    
+    def find_books_by_author(self, author):
+        """
+        Search for books by author (partial match)
+        
+        Returns:
+            List of books matching the author
+        """
+        found_books = []
+        for book in self.__books:
+            if author.lower() in book.get_author().lower():
+                found_books.append(book)
+        return found_books
+    
+    def display_all_books(self):
+        """Display all books in the library"""
+        if not self.__books:
+            print("No books available in the library.")
+            return
+        
+        print("\n" + "="*70)
+        print(f"{'Book ID':<12} {'Title':<25} {'Author':<20} {'Available':<10}")
+        print("="*70)
+        for book in self.__books:
+            print(f"{book.get_book_id():<12} {book.get_title():<25} "
+                  f"{book.get_author():<20} {book.get_available_copies():<10}")
+        print("="*70)
+    
+    # Member Management Methods
+    def add_member(self, member_id, name, email, phone):
+        """
+        Add a new member to the library
+        
+        Returns:
+            bool: True if member was added successfully, False if member already exists
+        """
+        # Check if member already exists
+        if self.find_member_by_id(member_id):
+            print(f"Member with ID {member_id} already exists!")
+            return False
+        
+        member = Member(member_id, name, email, phone)
+        self.__members.append(member)
+        print(f"Member '{name}' added successfully!")
+        return True
+    
+    def find_member_by_id(self, member_id):
+        """
+        Linear search to find a member by ID
+        
+        Returns:
+            Member object if found, None otherwise
+        """
+        for member in self.__members:
+            if member.get_member_id().lower() == member_id.lower():
+                return member
+        return None
+    
+    def find_member_by_name(self, name):
+        """
+        Search for members by name (partial match)
+        
+        Returns:
+            List of members matching the name
+        """
+        found_members = []
+        for member in self.__members:
+            if name.lower() in member.get_name().lower():
+                found_members.append(member)
+        return found_members
+    
+    def display_all_members(self):
+        """Display all members in the library"""
+        if not self.__members:
+            print("No members registered in the library.")
+            return
+        
+        print("\n" + "="*80)
+        print(f"{'Member ID':<12} {'Name':<25} {'Email':<25} {'Books Issued':<12}")
+        print("="*80)
+        for member in self.__members:
+            print(f"{member.get_member_id():<12} {member.get_name():<25} "
+                  f"{member.get_email():<25} {member.get_issued_books_count():<12}")
+        print("="*80)
+    
+    # Issue and Return Methods
+    def issue_book(self, book_id, member_id):
+        """
+        Issue a book to a member
+        
+        Returns:
+            bool: True if issued successfully, False otherwise
+        """
+        # Find the book
+        book = self.find_book_by_id(book_id)
+        if not book:
+            print(f"Book with ID {book_id} not found!")
+            return False
+        
+        # Find the member
+        member = self.find_member_by_id(member_id)
+        if not member:
+            print(f"Member with ID {member_id} not found!")
+            return False
+        
+        # Check if book is available
+        if not book.is_available():
+            print(f"Book '{book.get_title()}' is not available!")
+            return False
+        
+        # Check if member has already issued this book
+        if book_id in member.get_books_issued():
+            print(f"Member has already issued this book!")
+            return False
+        
+        # Issue the book
+        if book.issue_book():
+            member.add_issued_book(book_id)
+            # Create issue record
+            issue_record = IssueRecord(
+                self.__record_counter,
+                book_id,
+                member_id
+            )
+            self.__issue_records.append(issue_record)
+            self.__record_counter += 1
+            
+            print(f"Book '{book.get_title()}' issued successfully to {member.get_name()}!")
+            return True
+        
+        return False
+    
+    def return_book(self, book_id, member_id):
+        """
+        Return a book to the library
+        
+        Returns:
+            bool: True if returned successfully, False otherwise
+        """
+        # Find the book
+        book = self.find_book_by_id(book_id)
+        if not book:
+            print(f"Book with ID {book_id} not found!")
+            return False
+        
+        # Find the member
+        member = self.find_member_by_id(member_id)
+        if not member:
+            print(f"Member with ID {member_id} not found!")
+            return False
+        
+        # Check if member has issued this book
+        if book_id not in member.get_books_issued():
+            print(f"Member has not issued this book!")
+            return False
+        
+        # Return the book
+        if book.return_book():
+            member.remove_issued_book(book_id)
+            
+            # Update the issue record
+            for record in self.__issue_records:
+                if (record.get_book_id().lower() == book_id.lower() and 
+                    record.get_member_id().lower() == member_id.lower() and 
+                    not record.is_returned()):
+                    record.return_book()
+                    break
+            
+            print(f"Book '{book.get_title()}' returned successfully by {member.get_name()}!")
+            return True
+        
+        return False
+    
+    def display_issue_records(self):
+        """Display all issue records"""
+        if not self.__issue_records:
+            print("No issue records found.")
+            return
+        
+        print("\n" + "="*85)
+        print(f"{'Record ID':<10} {'Book ID':<10} {'Member ID':<10} {'Issue Date':<22} {'Status':<10}")
+        print("="*85)
+        for record in self.__issue_records:
+            status = "Returned" if record.is_returned() else "Issued"
+            issue_date = record.get_issue_date().strftime('%Y-%m-%d %H:%M')
+            print(f"{record.get_record_id():<10} {record.get_book_id():<10} "
+                  f"{record.get_member_id():<10} {issue_date:<22} {status:<10}")
+        print("="*85)
+    
+    def display_member_books(self, member_id):
+        """Display all books issued to a member"""
+        member = self.find_member_by_id(member_id)
+        if not member:
+            print(f"Member with ID {member_id} not found!")
+            return
+        
+        issued_books = member.get_books_issued()
+        if not issued_books:
+            print(f"Member {member.get_name()} has no books issued.")
+            return
+        
+        print(f"\nBooks issued to {member.get_name()}:")
+        print("="*60)
+        for book_id in issued_books:
+            book = self.find_book_by_id(book_id)
+            if book:
+                print(f"Book ID: {book.get_book_id()}, Title: {book.get_title()}, Author: {book.get_author()}")
+        print("="*60)
+    
+    def __str__(self):
+        """String representation of the Library"""
+        return (f"Library: {self.__name}\n"
+                f"Total Books: {len(self.__books)}\n"
+                f"Total Members: {len(self.__members)}\n"
+                f"Total Issue Records: {len(self.__issue_records)}")
+
+
+class LibraryApp:
+    """Runs the application with a menu"""
+    
+    def __init__(self):
+        self.library = Library("Central Library")
+    
+    def read_input(self, prompt):
+        """Read input from user"""
+        return input(prompt)
+    
+    def display_menu(self):
+        """Display the main menu"""
+        print("\n" + "="*50)
+        print("          LIBRARY MANAGEMENT SYSTEM")
+        print("="*50)
+        print("1. Add Book")
+        print("2. Add Member")
+        print("3. Issue Book")
+        print("4. Return Book")
+        print("5. Display All Books")
+        print("6. Display All Members")
+        print("7. Search Book by ID")
+        print("8. Search Books by Title")
+        print("9. Search Books by Author")
+        print("10. Display Member's Books")
+        print("11. Display Issue Records")
+        print("12. Display Library Statistics")
+        print("13. Exit")
+        print("="*50)
+    
+    def add_book_menu(self):
+        """Menu for adding a book"""
+        print("\n--- Add Book ---")
+        book_id = self.read_input("Enter Book ID: ")
+        title = self.read_input("Enter Book Title: ")
+        author = self.read_input("Enter Book Author: ")
+        isbn = self.read_input("Enter ISBN: ")
+        quantity_str = self.read_input("Enter Quantity (default 1): ")
+        quantity = int(quantity_str) if quantity_str else 1
+        self.library.add_book(book_id, title, author, isbn, quantity)
+    
+    def add_member_menu(self):
+        """Menu for adding a member"""
+        print("\n--- Add Member ---")
+        member_id = self.read_input("Enter Member ID: ")
+        name = self.read_input("Enter Member Name: ")
+        email = self.read_input("Enter Email: ")
+        phone = self.read_input("Enter Phone Number: ")
+        self.library.add_member(member_id, name, email, phone)
+    
+    def issue_book_menu(self):
+        """Menu for issuing a book"""
+        print("\n--- Issue Book ---")
+        book_id = self.read_input("Enter Book ID: ")
+        member_id = self.read_input("Enter Member ID: ")
+        self.library.issue_book(book_id, member_id)
+    
+    def return_book_menu(self):
+        """Menu for returning a book"""
+        print("\n--- Return Book ---")
+        book_id = self.read_input("Enter Book ID: ")
+        member_id = self.read_input("Enter Member ID: ")
+        self.library.return_book(book_id, member_id)
+    
+    def search_book_by_id_menu(self):
+        """Menu for searching book by ID"""
+        print("\n--- Search Book by ID ---")
+        book_id = self.read_input("Enter Book ID: ")
+        book = self.library.find_book_by_id(book_id)
+        if book:
+            print("\n" + str(book))
+        else:
+            print("Book not found!")
+    
+    def search_books_by_title_menu(self):
+        """Menu for searching books by title"""
+        print("\n--- Search Books by Title ---")
+        title = self.read_input("Enter Title (or partial): ")
+        books = self.library.find_books_by_title(title)
+        if books:
+            print(f"\nFound {len(books)} book(s):")
+            for book in books:
+                print(f"  - {book.get_book_id()}: {book.get_title()} by {book.get_author()} (Available: {book.get_available_copies()})")
+        else:
+            print("No books found with that title!")
+    
+    def search_books_by_author_menu(self):
+        """Menu for searching books by author"""
+        print("\n--- Search Books by Author ---")
+        author = self.read_input("Enter Author (or partial): ")
+        books = self.library.find_books_by_author(author)
+        if books:
+            print(f"\nFound {len(books)} book(s):")
+            for book in books:
+                print(f"  - {book.get_book_id()}: {book.get_title()} by {book.get_author()} (Available: {book.get_available_copies()})")
+        else:
+            print("No books found by that author!")
+    
+    def display_member_books_menu(self):
+        """Menu for displaying member's books"""
+        print("\n--- Display Member's Books ---")
+        member_id = self.read_input("Enter Member ID: ")
+        self.library.display_member_books(member_id)
+    
+    def display_library_stats(self):
+        """Display library statistics"""
+        print("\n--- Library Statistics ---")
+        print(self.library)
+        
+        # Show top 5 books by title
+        books = self.library.get_books()
+        if books:
+            print("\nTop 5 Books (Alphabetical by Title):")
+            sorted_books = sorted(books, key=lambda b: b.get_title().lower())
+            for i, book in enumerate(sorted_books[:5], 1):
+                print(f"  {i}. {book.get_title()} by {book.get_author()}")
+    
+    def run(self):
+        """Run the application"""
+        print("Welcome to the Library Management System!")
+        print("Please enter your choice from the menu below:")
+        
+        while True:
+            try:
+                self.display_menu()
+                choice = self.read_input("Enter your choice (1-13): ")
+                
+                if choice == "1":
+                    self.add_book_menu()
+                elif choice == "2":
+                    self.add_member_menu()
+                elif choice == "3":
+                    self.issue_book_menu()
+                elif choice == "4":
+                    self.return_book_menu()
+                elif choice == "5":
+                    self.library.display_all_books()
+                elif choice == "6":
+                    self.library.display_all_members()
+                elif choice == "7":
+                    self.search_book_by_id_menu()
+                elif choice == "8":
+                    self.search_books_by_title_menu()
+                elif choice == "9":
+                    self.search_books_by_author_menu()
+                elif choice == "10":
+                    self.display_member_books_menu()
+                elif choice == "11":
+                    self.library.display_issue_records()
+                elif choice == "12":
+                    self.display_library_stats()
+                elif choice == "13":
+                    print("\nThank you for using the Library Management System!")
+                    print("Goodbye!")
+                    break
+                else:
+                    print("Invalid choice! Please enter a number between 1 and 13.")
+                
+                # Wait for user to press Enter before continuing
+                if choice != "13":
+                    input("\nPress Enter to continue...")
+                
+            except KeyboardInterrupt:
+                print("\n\nProgram interrupted. Exiting...")
+                break
+            except ValueError as e:
+                print(f"Invalid input: {e}")
+                print("Please enter a valid value.")
+            except Exception as e:
+                print(f"An error occurred: {e}")
+                print("Please try again.")
+
+
+def main():
+    """Main entry point of the application"""
+    app = LibraryApp()
+    app.run()
+
+
+if __name__ == "__main__":
+    main()
