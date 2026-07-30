@@ -1,0 +1,875 @@
+"""
+MINDPAP - Interactive Knowledge Organizer
+A creative project combining todo-list, note-taking, and knowledge graph
+"""
+
+import json
+import os
+import random
+from datetime import datetime, timedelta
+from enum import Enum
+from typing import List, Dict, Optional, Set
+from dataclasses import dataclass, field
+from collections import defaultdict
+import textwrap
+
+# ============================================
+# ENUMS AND CONSTANTS
+# ============================================
+
+class Priority(Enum):
+    CRITICAL = 5
+    HIGH = 4
+    MEDIUM = 3
+    LOW = 2
+    TRIVIAL = 1
+    
+    def __str__(self):
+        return self.name
+    
+    def get_icon(self):
+        icons = {
+            Priority.CRITICAL: "🔴",
+            Priority.HIGH: "🟠",
+            Priority.MEDIUM: "🟡",
+            Priority.LOW: "🟢",
+            Priority.TRIVIAL: "⚪"
+        }
+        return icons[self]
+
+class Category(Enum):
+    PROGRAMMING = "💻"
+    DESIGN = "🎨"
+    DATA = "📊"
+    BUSINESS = "💼"
+    PERSONAL = "🧘"
+    LEARNING = "📚"
+    HEALTH = "🏋️"
+    CREATIVE = "🎭"
+    OTHER = "📌"
+    
+    def __str__(self):
+        return self.name
+    
+    def get_icon(self):
+        return self.value
+
+class Status(Enum):
+    NOT_STARTED = "⏳"
+    IN_PROGRESS = "🔄"
+    COMPLETED = "✅"
+    BLOCKED = "🚫"
+    REVIEW = "👀"
+    
+    def __str__(self):
+        return self.name
+    
+    def get_icon(self):
+        return self.value
+
+# ============================================
+# KNOWLEDGE NODE CLASS
+# ============================================
+
+@dataclass
+class KnowledgeNode:
+    id: int
+    title: str
+    description: str
+    category: Category
+    priority: Priority = Priority.MEDIUM
+    status: Status = Status.NOT_STARTED
+    created: datetime = field(default_factory=datetime.now)
+    deadline: datetime = field(default_factory=lambda: datetime.now() + timedelta(days=7))
+    child_ids: List[int] = field(default_factory=list)
+    dependency_ids: List[int] = field(default_factory=list)
+    parent_id: int = -1
+    energy_required: int = 5
+    estimated_hours: int = 1
+    actual_hours: int = 0
+    tags: List[str] = field(default_factory=list)
+    resources: List[str] = field(default_factory=list)
+    reflection: str = ""
+    
+    def get_progress(self) -> float:
+        """Calculate progress percentage based on status"""
+        progress_map = {
+            Status.COMPLETED: 100.0,
+            Status.REVIEW: 75.0,
+            Status.IN_PROGRESS: 50.0,
+            Status.BLOCKED: 25.0,
+            Status.NOT_STARTED: 0.0
+        }
+        return progress_map.get(self.status, 0.0)
+    
+    def get_urgency_score(self) -> int:
+        """Calculate urgency based on deadline"""
+        days_until = (self.deadline - datetime.now()).days
+        if days_until <= 0:
+            return 10
+        elif days_until <= 2:
+            return 8
+        elif days_until <= 5:
+            return 6
+        elif days_until <= 7:
+            return 4
+        else:
+            return 2
+    
+    def get_priority_score(self) -> int:
+        """Calculate overall priority score (AI-like scoring)"""
+        score = 0
+        score += self.priority.value * 2  # Priority weight
+        score += self.get_urgency_score()
+        score += self.energy_required // 2
+        score += len(self.child_ids) * 2  # More children = higher impact
+        score += len(self.dependency_ids)  # Dependencies increase importance
+        return min(100, score)
+    
+    def get_status_icon(self) -> str:
+        return self.status.value
+    
+    def to_dict(self) -> dict:
+        """Convert to dictionary for JSON serialization"""
+        return {
+            'id': self.id,
+            'title': self.title,
+            'description': self.description,
+            'category': self.category.name,
+            'priority': self.priority.name,
+            'status': self.status.name,
+            'created': self.created.isoformat(),
+            'deadline': self.deadline.isoformat(),
+            'child_ids': self.child_ids,
+            'dependency_ids': self.dependency_ids,
+            'parent_id': self.parent_id,
+            'energy_required': self.energy_required,
+            'estimated_hours': self.estimated_hours,
+            'actual_hours': self.actual_hours,
+            'tags': self.tags,
+            'resources': self.resources,
+            'reflection': self.reflection
+        }
+    
+    @classmethod
+    def from_dict(cls, data: dict) -> 'KnowledgeNode':
+        """Create from dictionary"""
+        node = cls(
+            id=data['id'],
+            title=data['title'],
+            description=data['description'],
+            category=Category[data['category']],
+            priority=Priority[data['priority']],
+            status=Status[data['status']],
+            deadline=datetime.fromisoformat(data['deadline'])
+        )
+        node.created = datetime.fromisoformat(data['created'])
+        node.child_ids = data['child_ids']
+        node.dependency_ids = data['dependency_ids']
+        node.parent_id = data['parent_id']
+        node.energy_required = data['energy_required']
+        node.estimated_hours = data['estimated_hours']
+        node.actual_hours = data['actual_hours']
+        node.tags = data['tags']
+        node.resources = data['resources']
+        node.reflection = data['reflection']
+        return node
+    
+    def __str__(self):
+        return f"{self.status.value} {self.title} [{self.category.value}] - {self.status.name}"
+
+# ============================================
+# QUOTE MANAGER
+# ============================================
+
+class QuoteManager:
+    QUOTES = [
+        "🌟 \"The only way to do great work is to love what you do.\" - Steve Jobs",
+        "💡 \"Innovation distinguishes between a leader and a follower.\" - Steve Jobs",
+        "🚀 \"It does not matter how slowly you go as long as you do not stop.\" - Confucius",
+        "🎯 \"Success is not final, failure is not fatal: it is the courage to continue that counts.\"",
+        "💪 \"The future belongs to those who believe in the beauty of their dreams.\" - Eleanor Roosevelt",
+        "🧠 \"The mind is everything. What you think you become.\" - Buddha",
+        "✨ \"Believe you can and you're halfway there.\" - Theodore Roosevelt",
+        "🔥 \"The secret of getting ahead is getting started.\" - Mark Twain",
+        "🌟 \"Don't watch the clock; do what it does. Keep going.\" - Sam Levenson",
+        "💫 \"The best time to plant a tree was 20 years ago. The second best time is now.\"",
+        "🎨 \"Creativity is intelligence having fun.\" - Albert Einstein",
+        "📚 \"Education is the most powerful weapon which you can use to change the world.\" - Mandela",
+        "🌊 \"Life is like riding a bicycle. To keep your balance, you must keep moving.\" - Einstein",
+        "🌈 \"Your time is limited, don't waste it living someone else's life.\" - Steve Jobs",
+        "⭐ \"The only impossible journey is the one you never begin.\" - Tony Robbins"
+    ]
+    
+    def __init__(self):
+        self.last_quote = ""
+    
+    def get_random_quote(self) -> str:
+        """Get a random unique quote"""
+        quote = random.choice(self.QUOTES)
+        while quote == self.last_quote and len(self.QUOTES) > 1:
+            quote = random.choice(self.QUOTES)
+        self.last_quote = quote
+        return quote
+    
+    def get_daily_quote(self) -> str:
+        """Get quote based on day of year"""
+        day_of_year = datetime.now().timetuple().tm_yday
+        return self.QUOTES[day_of_year % len(self.QUOTES)]
+
+# ============================================
+# KNOWLEDGE GRAPH MANAGER
+# ============================================
+
+class KnowledgeGraph:
+    def __init__(self, name: str = "My MindMap"):
+        self.name = name
+        self.nodes: Dict[int, KnowledgeNode] = {}
+        self.next_id = 1
+        self.created = datetime.now()
+        self.quote_manager = QuoteManager()
+        self.data_file = "mindmap.json"
+        self.load_data()
+    
+    # ========== NODE OPERATIONS ==========
+    
+    def create_node(self, title: str, description: str, category: Category) -> int:
+        """Create a new knowledge node"""
+        node = KnowledgeNode(self.next_id, title, description, category)
+        self.nodes[node.id] = node
+        self.next_id += 1
+        print(f"✅ Created node: {category.value} {title}")
+        return node.id
+    
+    def add_child(self, parent_id: int, child_id: int) -> bool:
+        """Add child relationship between nodes"""
+        parent = self.nodes.get(parent_id)
+        child = self.nodes.get(child_id)
+        if parent and child:
+            parent.child_ids.append(child_id)
+            child.parent_id = parent_id
+            print(f"🔗 Linked {parent.title} -> {child.title}")
+            return True
+        print("❌ Parent or child not found!")
+        return False
+    
+    def add_dependency(self, node_id: int, dep_id: int) -> bool:
+        """Add dependency relationship"""
+        node = self.nodes.get(node_id)
+        dep = self.nodes.get(dep_id)
+        if node and dep:
+            node.dependency_ids.append(dep_id)
+            print(f"📌 Added dependency: {node.title} depends on {dep.title}")
+            return True
+        print("❌ Node or dependency not found!")
+        return False
+    
+    # ========== UPDATE OPERATIONS ==========
+    
+    def update_status(self, node_id: int, status: Status) -> bool:
+        """Update node status"""
+        node = self.nodes.get(node_id)
+        if node:
+            node.status = status
+            print(f"📊 Updated {node.title}: {status.value}")
+            return True
+        print("❌ Node not found!")
+        return False
+    
+    def update_priority(self, node_id: int, priority: Priority) -> bool:
+        """Update node priority"""
+        node = self.nodes.get(node_id)
+        if node:
+            node.priority = priority
+            print(f"🎯 Updated priority for {node.title}: {priority}")
+            return True
+        print("❌ Node not found!")
+        return False
+    
+    def update_deadline(self, node_id: int, deadline: datetime) -> bool:
+        """Update node deadline"""
+        node = self.nodes.get(node_id)
+        if node:
+            node.deadline = deadline
+            print(f"📅 Updated deadline for {node.title}")
+            return True
+        print("❌ Node not found!")
+        return False
+    
+    def add_tag(self, node_id: int, tag: str) -> bool:
+        """Add tag to node"""
+        node = self.nodes.get(node_id)
+        if node and tag not in node.tags:
+            node.tags.append(tag)
+            print(f"🏷️ Added tag '{tag}' to {node.title}")
+            return True
+        print("❌ Node not found or tag already exists!")
+        return False
+    
+    def add_reflection(self, node_id: int, reflection: str) -> bool:
+        """Add reflection/notes to node"""
+        node = self.nodes.get(node_id)
+        if node:
+            node.reflection = reflection
+            print(f"📝 Added reflection to {node.title}")
+            return True
+        print("❌ Node not found!")
+        return False
+    
+    # ========== VIEW OPERATIONS ==========
+    
+    def display_tree(self, root_id: int, level: int = 0, prefix: str = ""):
+        """Display tree structure recursively"""
+        node = self.nodes.get(root_id)
+        if not node:
+            return
+        
+        indent = "│   " * level
+        if level > 0:
+            indent = prefix + "├── "
+        
+        progress = ""
+        if node.status == Status.COMPLETED:
+            progress = " ✅ 100%"
+        elif node.status == Status.IN_PROGRESS:
+            progress = " 🔄 50%"
+        
+        print(f"{indent}{node.status.value} {node.category.value} {node.title}{progress}")
+        
+        for i, child_id in enumerate(node.child_ids):
+            is_last = i == len(node.child_ids) - 1
+            new_prefix = "    " * (level + 1) + ("    " if is_last else "│   ")
+            self.display_tree(child_id, level + 1, new_prefix)
+    
+    def display_full_tree(self):
+        """Display complete knowledge tree"""
+        roots = [n for n in self.nodes.values() if n.parent_id == -1]
+        roots.sort(key=lambda x: x.title)
+        
+        if not roots:
+            print("📭 No nodes found. Create some knowledge first!")
+            return
+        
+        print("\n🌳 " + "=" * 60)
+        print(f"     {self.name.upper()} KNOWLEDGE TREE")
+        print("🌳 " + "=" * 60)
+        print("\nLegend: ⏳Not Started | 🔄In Progress | ✅Completed | 🚫Blocked | 👀Review\n")
+        
+        for root in roots:
+            print(f"📌 {root.category.value} {root.title}")
+            for child_id in root.child_ids:
+                self.display_tree(child_id, 1)
+            print()
+        
+        print(f"📊 Total: {len(self.nodes)} nodes\n")
+    
+    def display_node_details(self, node_id: int):
+        """Display detailed information about a node"""
+        node = self.nodes.get(node_id)
+        if not node:
+            print("❌ Node not found!")
+            return
+        
+        print("\n📋 " + "=" * 70)
+        print(f"📌 {node.category.value} {node.title}")
+        print("📖 " + "=" * 70)
+        print(f"Description: {node.description}")
+        print(f"Status: {node.status.value} {node.status.name}")
+        print(f"Priority: {node.priority}")
+        print(f"Created: {node.created.strftime('%Y-%m-%d %H:%M')}")
+        print(f"Deadline: {node.deadline.strftime('%Y-%m-%d %H:%M')}")
+        print(f"Energy Required: {'⚡' * node.energy_required}")
+        print(f"Estimated Hours: {node.estimated_hours}")
+        print(f"Actual Hours: {node.actual_hours}")
+        print(f"Priority Score: {node.get_priority_score()}/100")
+        print(f"Progress: {node.get_progress():.1f}%")
+        
+        if node.tags:
+            print(f"Tags: {', '.join(node.tags)}")
+        if node.resources:
+            print(f"Resources: {', '.join(node.resources)}")
+        if node.reflection:
+            print(f"Reflection:\n{textwrap.fill(node.reflection, 70)}")
+        
+        if node.child_ids:
+            children = [self.nodes[cid].title for cid in node.child_ids if cid in self.nodes]
+            print(f"Children: {', '.join(children)}")
+        if node.dependency_ids:
+            deps = [self.nodes[did].title for did in node.dependency_ids if did in self.nodes]
+            print(f"Dependencies: {', '.join(deps)}")
+        
+        print("📖 " + "=" * 70 + "\n")
+    
+    # ========== SEARCH OPERATIONS ==========
+    
+    def search_nodes(self, query: str) -> List[KnowledgeNode]:
+        """Search nodes by title, description, or tags"""
+        query = query.lower()
+        results = []
+        for node in self.nodes.values():
+            if (query in node.title.lower() or 
+                query in node.description.lower() or
+                any(query in tag.lower() for tag in node.tags)):
+                results.append(node)
+        return results
+    
+    def get_nodes_by_category(self, category: Category) -> List[KnowledgeNode]:
+        """Get all nodes in a category"""
+        return [n for n in self.nodes.values() if n.category == category]
+    
+    def get_nodes_by_status(self, status: Status) -> List[KnowledgeNode]:
+        """Get all nodes with specific status"""
+        return [n for n in self.nodes.values() if n.status == status]
+    
+    # ========== ANALYTICS ==========
+    
+    def display_statistics(self):
+        """Display comprehensive analytics"""
+        if not self.nodes:
+            print("📭 No data to analyze. Start adding knowledge nodes!")
+            return
+        
+        total = len(self.nodes)
+        completed = sum(1 for n in self.nodes.values() if n.status == Status.COMPLETED)
+        in_progress = sum(1 for n in self.nodes.values() if n.status == Status.IN_PROGRESS)
+        not_started = sum(1 for n in self.nodes.values() if n.status == Status.NOT_STARTED)
+        blocked = sum(1 for n in self.nodes.values() if n.status == Status.BLOCKED)
+        
+        print("\n📊 " + "=" * 70)
+        print(f"         {self.name.upper()} ANALYTICS")
+        print("📊 " + "=" * 70)
+        
+        print(f"\n📈 Overview:")
+        print(f"   Total Nodes: {total}")
+        print(f"   ✅ Completed: {completed} ({completed/total*100:.1f}%)")
+        print(f"   🔄 In Progress: {in_progress} ({in_progress/total*100:.1f}%)")
+        print(f"   ⏳ Not Started: {not_started} ({not_started/total*100:.1f}%)")
+        print(f"   🚫 Blocked: {blocked} ({blocked/total*100:.1f}%)")
+        
+        # Progress bar
+        progress = (completed / total) * 100
+        bar_length = 40
+        filled = int(bar_length * progress / 100)
+        bar = '█' * filled + '░' * (bar_length - filled)
+        print(f"\n   📊 Overall Progress: [{bar}] {progress:.1f}%")
+        
+        # Category breakdown
+        print("\n📂 By Category:")
+        for category in Category:
+            count = sum(1 for n in self.nodes.values() if n.category == category)
+            if count > 0:
+                print(f"   {category.value} {category.name}: {count}")
+        
+        # Priority breakdown
+        print("\n🎯 By Priority:")
+        for priority in Priority:
+            count = sum(1 for n in self.nodes.values() if n.priority == priority)
+            if count > 0:
+                print(f"   {priority.get_icon()} {priority.name}: {count}")
+        
+        # Most active day
+        print("\n📅 Activity:")
+        days = defaultdict(int)
+        for node in self.nodes.values():
+            day = node.created.strftime("%Y-%m-%d")
+            days[day] += 1
+        
+        if days:
+            most_active = max(days.items(), key=lambda x: x[1])
+            print(f"   Most active day: {most_active[0]} ({most_active[1]} nodes)")
+        
+        # Top tags
+        all_tags = [tag for node in self.nodes.values() for tag in node.tags]
+        if all_tags:
+            tag_counts = defaultdict(int)
+            for tag in all_tags:
+                tag_counts[tag] += 1
+            top_tags = sorted(tag_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+            print("\n🏷️ Top Tags:")
+            for tag, count in top_tags:
+                print(f"   #{tag}: {count}")
+        
+        print("\n" + "=" * 70 + "\n")
+    
+    def display_visual_timeline(self):
+        """Display a visual timeline of nodes"""
+        if not self.nodes:
+            print("📭 No nodes to display!")
+            return
+        
+        print("\n📅 " + "=" * 70)
+        print("         KNOWLEDGE TIMELINE")
+        print("📅 " + "=" * 70)
+        
+        sorted_nodes = sorted(self.nodes.values(), key=lambda x: x.created)
+        
+        for node in sorted_nodes:
+            date_str = node.created.strftime("%Y-%m-%d")
+            status_icon = node.status.value
+            progress = node.get_progress()
+            
+            # Progress bar
+            bar_length = 20
+            filled = int(bar_length * progress / 100)
+            bar = '█' * filled + '░' * (bar_length - filled)
+            
+            print(f"{date_str} {status_icon} {node.category.value} {node.title[:30]}")
+            print(f"         [{bar}] {progress:.0f}%")
+            print()
+    
+    # ========== SAVE/LOAD OPERATIONS ==========
+    
+    def save_data(self):
+        """Save all data to JSON file"""
+        try:
+            data = {
+                'name': self.name,
+                'next_id': self.next_id,
+                'created': self.created.isoformat(),
+                'nodes': {str(k): v.to_dict() for k, v in self.nodes.items()}
+            }
+            
+            with open(self.data_file, 'w') as f:
+                json.dump(data, f, indent=2)
+            
+            print("💾 Data saved successfully!")
+        except Exception as e:
+            print(f"❌ Error saving data: {e}")
+    
+    def load_data(self):
+        """Load data from JSON file"""
+        if not os.path.exists(self.data_file):
+            print("📝 No saved data found. Starting fresh!")
+            return
+        
+        try:
+            with open(self.data_file, 'r') as f:
+                data = json.load(f)
+            
+            self.name = data.get('name', self.name)
+            self.next_id = data.get('next_id', 1)
+            self.created = datetime.fromisoformat(data['created'])
+            
+            self.nodes = {}
+            for node_id, node_data in data['nodes'].items():
+                node = KnowledgeNode.from_dict(node_data)
+                self.nodes[node.id] = node
+            
+            print(f"📂 Loaded {len(self.nodes)} nodes from file!")
+        except Exception as e:
+            print(f"❌ Error loading data: {e}")
+    
+    # ========== AI-LIKE FEATURES ==========
+    
+    def get_smart_recommendations(self) -> List[KnowledgeNode]:
+        """Get smart recommendations based on priority and deadlines"""
+        if not self.nodes:
+            return []
+        
+        # Score each node
+        scored_nodes = []
+        for node in self.nodes.values():
+            if node.status in [Status.NOT_STARTED, Status.IN_PROGRESS]:
+                score = node.get_priority_score()
+                # Bonus for upcoming deadlines
+                days_until = (node.deadline - datetime.now()).days
+                if days_until <= 0:
+                    score += 20
+                elif days_until <= 3:
+                    score += 10
+                
+                scored_nodes.append((score, node))
+        
+        scored_nodes.sort(reverse=True)
+        return [node for _, node in scored_nodes[:5]]
+    
+    def display_smart_recommendations(self):
+        """Display AI-like recommendations"""
+        recommendations = self.get_smart_recommendations()
+        
+        if not recommendations:
+            print("🎯 No immediate recommendations. Great job!")
+            return
+        
+        print("\n🎯 " + "=" * 70)
+        print("     SMART RECOMMENDATIONS (AI-Powered)")
+        print("🎯 " + "=" * 70)
+        print("\nBased on urgency, importance, and dependencies:")
+        
+        for i, node in enumerate(recommendations, 1):
+            score = node.get_priority_score()
+            urgency = node.get_urgency_score()
+            
+            urgency_icons = ["😌", "🤔", "😅", "😰", "🚨"]
+            urgency_level = min(4, max(0, urgency // 2))
+            urgency_icon = urgency_icons[urgency_level]
+            
+            print(f"\n{i}. {urgency_icon} {node.category.value} {node.title}")
+            print(f"   Score: {score}/100 | Urgency: {urgency}/10")
+            print(f"   Deadline: {node.deadline.strftime('%Y-%m-%d')}")
+            if node.dependency_ids:
+                deps = [self.nodes[did].title for did in node.dependency_ids if did in self.nodes]
+                if deps:
+                    print(f"   Dependencies: {', '.join(deps)}")
+            print(f"   💡 {random.choice(['Focus on this now!', 'High priority!', 'Time-sensitive!', 'Critical path!'])}")
+        
+        print("\n" + "=" * 70 + "\n")
+    
+    def display_daily_inspiration(self):
+        """Display daily inspiration"""
+        quote = self.quote_manager.get_daily_quote()
+        print("\n✨ " + "=" * 70)
+        print("     DAILY INSPIRATION")
+        print("✨ " + "=" * 70)
+        print(f"\n{quote}\n")
+        print("=" * 70 + "\n")
+
+# ============================================
+# MAIN APPLICATION
+# ============================================
+
+class MindMapApp:
+    def __init__(self):
+        self.kg = KnowledgeGraph("My MindMap")
+        self.scanner = None
+        
+    def print_header(self):
+        """Print application header"""
+        print("\n" + "🧠 " + "=" * 60)
+        print("     MINDPAP - Interactive Knowledge Organizer")
+        print("🧠 " + "=" * 60)
+        print(f"     📚 {self.kg.name} | Nodes: {len(self.kg.nodes)}")
+        print("=" * 70)
+    
+    def display_menu(self):
+        """Display main menu"""
+        print("\n╔══════════════════════════════════════════════════════╗")
+        print("║                    MAIN MENU                        ║")
+        print("╠══════════════════════════════════════════════════════╣")
+        print("║  1. 📝 Create Node                                  ║")
+        print("║  2. 🔗 Link Nodes (Parent-Child)                    ║")
+        print("║  3. 📌 Add Dependency                               ║")
+        print("║  4. 📊 Update Status                                ║")
+        print("║  5. 🎯 Update Priority                              ║")
+        print("║  6. 🏷️ Add Tag                                     ║")
+        print("║  7. 📝 Add Reflection                               ║")
+        print("║  8. 🌳 View Knowledge Tree                          ║")
+        print("║  9. 📋 View Node Details                            ║")
+        print("║ 10. 🔍 Search Nodes                                 ║")
+        print("║ 11. 📊 View Statistics                              ║")
+        print("║ 12. 📅 View Timeline                                ║")
+        print("║ 13. 🎯 Smart Recommendations                        ║")
+        print("║ 14. ✨ Daily Inspiration                            ║")
+        print("║ 15. 💾 Save Data                                    ║")
+        print("║ 16. 📂 Load Data                                    ║")
+        print("║ 17. 🚪 Exit                                         ║")
+        print("╚══════════════════════════════════════════════════════╝")
+    
+    def get_input(self, prompt: str) -> str:
+        """Get user input"""
+        return input(prompt).strip()
+    
+    def get_int_input(self, prompt: str) -> int:
+        """Get integer input with validation"""
+        while True:
+            try:
+                return int(self.get_input(prompt))
+            except ValueError:
+                print("❌ Please enter a valid number!")
+    
+    def get_choice_from_enum(self, enum_class, prompt: str):
+        """Get user choice from enum"""
+        items = list(enum_class)
+        for i, item in enumerate(items, 1):
+            print(f"   {i}. {item.value} {item.name}")
+        
+        while True:
+            try:
+                choice = self.get_int_input(prompt)
+                if 1 <= choice <= len(items):
+                    return items[choice - 1]
+                print(f"❌ Please enter a number between 1 and {len(items)}!")
+            except ValueError:
+                print("❌ Invalid input!")
+    
+    def create_node_menu(self):
+        """Menu for creating a new node"""
+        print("\n📝 Create New Knowledge Node")
+        print("-" * 40)
+        
+        title = self.get_input("Title: ")
+        if not title:
+            print("❌ Title cannot be empty!")
+            return
+        
+        description = self.get_input("Description: ")
+        
+        print("\nSelect Category:")
+        category = self.get_choice_from_enum(Category, "Choice: ")
+        
+        print("\nSelect Priority:")
+        priority = self.get_choice_from_enum(Priority, "Choice: ")
+        
+        node_id = self.kg.create_node(title, description, category)
+        self.kg.update_priority(node_id, priority)
+        
+        # Ask if want to set deadline
+        if self.get_input("Set deadline? (y/n): ").lower() == 'y':
+            date_str = self.get_input("Deadline (YYYY-MM-DD): ")
+            try:
+                deadline = datetime.strptime(date_str, "%Y-%m-%d")
+                self.kg.update_deadline(node_id, deadline)
+            except ValueError:
+                print("❌ Invalid date format!")
+    
+    def link_nodes_menu(self):
+        """Menu for linking nodes"""
+        print("\n🔗 Link Nodes")
+        print("-" * 40)
+        print("Available nodes:")
+        for node in self.kg.nodes.values():
+            print(f"   {node.id}. {node.category.value} {node.title}")
+        
+        parent_id = self.get_int_input("Parent Node ID: ")
+        child_id = self.get_int_input("Child Node ID: ")
+        self.kg.add_child(parent_id, child_id)
+    
+    def add_dependency_menu(self):
+        """Menu for adding dependencies"""
+        print("\n📌 Add Dependency")
+        print("-" * 40)
+        print("Available nodes:")
+        for node in self.kg.nodes.values():
+            print(f"   {node.id}. {node.category.value} {node.title}")
+        
+        node_id = self.get_int_input("Node ID: ")
+        dep_id = self.get_int_input("Dependency ID: ")
+        self.kg.add_dependency(node_id, dep_id)
+    
+    def update_status_menu(self):
+        """Menu for updating status"""
+        print("\n📊 Update Status")
+        print("-" * 40)
+        print("Available nodes:")
+        for node in self.kg.nodes.values():
+            print(f"   {node.id}. {node.status.value} {node.title}")
+        
+        node_id = self.get_int_input("Node ID: ")
+        
+        print("\nSelect Status:")
+        status = self.get_choice_from_enum(Status, "Choice: ")
+        self.kg.update_status(node_id, status)
+    
+    def update_priority_menu(self):
+        """Menu for updating priority"""
+        print("\n🎯 Update Priority")
+        print("-" * 40)
+        print("Available nodes:")
+        for node in self.kg.nodes.values():
+            print(f"   {node.id}. {node.title}")
+        
+        node_id = self.get_int_input("Node ID: ")
+        
+        print("\nSelect Priority:")
+        priority = self.get_choice_from_enum(Priority, "Choice: ")
+        self.kg.update_priority(node_id, priority)
+    
+    def add_tag_menu(self):
+        """Menu for adding tags"""
+        print("\n🏷️ Add Tag")
+        print("-" * 40)
+        print("Available nodes:")
+        for node in self.kg.nodes.values():
+            print(f"   {node.id}. {node.title}")
+        
+        node_id = self.get_int_input("Node ID: ")
+        tag = self.get_input("Tag: ")
+        if tag:
+            self.kg.add_tag(node_id, tag)
+    
+    def add_reflection_menu(self):
+        """Menu for adding reflection"""
+        print("\n📝 Add Reflection")
+        print("-" * 40)
+        print("Available nodes:")
+        for node in self.kg.nodes.values():
+            print(f"   {node.id}. {node.title}")
+        
+        node_id = self.get_int_input("Node ID: ")
+        reflection = self.get_input("Reflection/Notes: ")
+        if reflection:
+            self.kg.add_reflection(node_id, reflection)
+    
+    def search_menu(self):
+        """Menu for searching nodes"""
+        print("\n🔍 Search Nodes")
+        print("-" * 40)
+        query = self.get_input("Search query: ")
+        
+        if query:
+            results = self.kg.search_nodes(query)
+            if results:
+                print(f"\nFound {len(results)} nodes:")
+                for node in results:
+                    print(f"   {node.id}. {node.status.value} {node.category.value} {node.title}")
+                    print(f"      {node.description[:50]}...")
+            else:
+                print("❌ No nodes found!")
+    
+    def run(self):
+        """Main application loop"""
+        while True:
+            self.print_header()
+            self.display_menu()
+            
+            choice = self.get_input("Enter your choice: ")
+            
+            if choice == '1':
+                self.create_node_menu()
+            elif choice == '2':
+                self.link_nodes_menu()
+            elif choice == '3':
+                self.add_dependency_menu()
+            elif choice == '4':
+                self.update_status_menu()
+            elif choice == '5':
+                self.update_priority_menu()
+            elif choice == '6':
+                self.add_tag_menu()
+            elif choice == '7':
+                self.add_reflection_menu()
+            elif choice == '8':
+                self.kg.display_full_tree()
+            elif choice == '9':
+                node_id = self.get_int_input("Enter Node ID: ")
+                self.kg.display_node_details(node_id)
+            elif choice == '10':
+                self.search_menu()
+            elif choice == '11':
+                self.kg.display_statistics()
+            elif choice == '12':
+                self.kg.display_visual_timeline()
+            elif choice == '13':
+                self.kg.display_smart_recommendations()
+            elif choice == '14':
+                self.kg.display_daily_inspiration()
+            elif choice == '15':
+                self.kg.save_data()
+            elif choice == '16':
+                self.kg.load_data()
+            elif choice == '17':
+                print("\n👋 Thank you for using MindMap!")
+                self.kg.save_data()
+                break
+            else:
+                print("❌ Invalid choice! Please enter a number between 1-17.")
+            
+            input("\nPress Enter to continue...")
+
+# ============================================
+# MAIN ENTRY POINT
+# ============================================
+
+if __name__ == "__main__":
+    app = MindMapApp()
+    app.run()
