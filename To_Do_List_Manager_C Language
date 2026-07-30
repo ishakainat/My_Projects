@@ -1,0 +1,578 @@
+/*
+ * TO-DO LIST APPLICATION IN C
+ * Complete implementation in a single file
+ * Compile: gcc -o todo todo.c
+ * Run: ./todo
+ */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+
+// ==================== CONSTANTS ====================
+#define MAX_TASKS 100
+#define MAX_TITLE_LEN 100
+#define MAX_DESC_LEN 200
+#define MAX_DATE_LEN 20
+#define DATA_FILE "tasks.txt"
+
+// ==================== STRUCTURES ====================
+typedef enum {
+    PRIORITY_HIGH,
+    PRIORITY_MEDIUM,
+    PRIORITY_LOW
+} Priority;
+
+typedef struct {
+    int id;
+    char title[MAX_TITLE_LEN];
+    char description[MAX_DESC_LEN];
+    Priority priority;
+    time_t createdDate;
+    time_t dueDate;
+    int isComplete;
+} Task;
+
+// ==================== GLOBAL VARIABLES ====================
+Task tasks[MAX_TASKS];
+int taskCount = 0;
+int nextId = 1;
+
+// ==================== UTILITY FUNCTIONS ====================
+void clearScreen() {
+    #ifdef _WIN32
+        system("cls");
+    #else
+        system("clear");
+    #endif
+}
+
+void waitForEnter() {
+    printf("\nPress Enter to continue...");
+    getchar();
+}
+
+char* priorityToString(Priority p) {
+    switch(p) {
+        case PRIORITY_HIGH: return "HIGH";
+        case PRIORITY_MEDIUM: return "MEDIUM";
+        case PRIORITY_LOW: return "LOW";
+        default: return "UNKNOWN";
+    }
+}
+
+char* dateToString(time_t date) {
+    static char buffer[20];
+    struct tm* timeinfo = localtime(&date);
+    strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M", timeinfo);
+    return buffer;
+}
+
+time_t stringToDate(const char* dateStr) {
+    struct tm tm = {0};
+    int year, month, day;
+    sscanf(dateStr, "%d-%d-%d", &year, &month, &day);
+    tm.tm_year = year - 1900;
+    tm.tm_mon = month - 1;
+    tm.tm_mday = day;
+    tm.tm_hour = 23;
+    tm.tm_min = 59;
+    return mktime(&tm);
+}
+
+// ==================== TASK FUNCTIONS ====================
+void addTask() {
+    if (taskCount >= MAX_TASKS) {
+        printf("❌ Task list is full!\n");
+        return;
+    }
+    
+    Task newTask;
+    newTask.id = nextId++;
+    newTask.createdDate = time(NULL);
+    newTask.isComplete = 0;
+    
+    printf("\n📝 Add New Task\n");
+    printf("Enter Title: ");
+    getchar(); // Clear newline
+    fgets(newTask.title, MAX_TITLE_LEN, stdin);
+    newTask.title[strcspn(newTask.title, "\n")] = '\0'; // Remove newline
+    
+    if (strlen(newTask.title) == 0) {
+        printf("❌ Title cannot be empty!\n");
+        return;
+    }
+    
+    printf("Enter Description: ");
+    fgets(newTask.description, MAX_DESC_LEN, stdin);
+    newTask.description[strcspn(newTask.description, "\n")] = '\0';
+    
+    int priorityChoice;
+    printf("Enter Priority (1-HIGH, 2-MEDIUM, 3-LOW): ");
+    scanf("%d", &priorityChoice);
+    getchar(); // Clear newline
+    
+    switch(priorityChoice) {
+        case 1: newTask.priority = PRIORITY_HIGH; break;
+        case 2: newTask.priority = PRIORITY_MEDIUM; break;
+        case 3: newTask.priority = PRIORITY_LOW; break;
+        default:
+            printf("❌ Invalid priority. Setting to MEDIUM.\n");
+            newTask.priority = PRIORITY_MEDIUM;
+    }
+    
+    char dateStr[MAX_DATE_LEN];
+    printf("Enter Due Date (YYYY-MM-DD): ");
+    fgets(dateStr, MAX_DATE_LEN, stdin);
+    dateStr[strcspn(dateStr, "\n")] = '\0';
+    newTask.dueDate = stringToDate(dateStr);
+    
+    tasks[taskCount++] = newTask;
+    printf("✅ Task added successfully! (ID: %d)\n", newTask.id);
+}
+
+void viewAllTasks() {
+    if (taskCount == 0) {
+        printf("📭 No tasks found.\n");
+        return;
+    }
+    
+    printf("\n╔═══════════════════════════════════════════════════════════════════════════════╗\n");
+    printf("║ ID  Title                      Priority    Due Date            Status        ║\n");
+    printf("╠═══════════════════════════════════════════════════════════════════════════════╣\n");
+    
+    for (int i = 0; i < taskCount; i++) {
+        Task* t = &tasks[i];
+        char status[10];
+        strcpy(status, t->isComplete ? "✅" : "⏳");
+        
+        char prioritySymbol[5];
+        switch(t->priority) {
+            case PRIORITY_HIGH: strcpy(prioritySymbol, "🔴"); break;
+            case PRIORITY_MEDIUM: strcpy(prioritySymbol, "🟡"); break;
+            case PRIORITY_LOW: strcpy(prioritySymbol, "🟢"); break;
+            default: strcpy(prioritySymbol, "  ");
+        }
+        
+        // Truncate title if too long
+        char shortTitle[MAX_TITLE_LEN];
+        strcpy(shortTitle, t->title);
+        if (strlen(shortTitle) > 24) {
+            shortTitle[21] = '\0';
+            strcat(shortTitle, "...");
+        }
+        
+        printf("║ %-3d %-24s %s %-7s %-20s %-12s ║\n",
+               t->id, shortTitle, prioritySymbol, priorityToString(t->priority),
+               dateToString(t->dueDate), status);
+    }
+    printf("╚═══════════════════════════════════════════════════════════════════════════════╝\n");
+    printf("Total: %d tasks\n\n", taskCount);
+}
+
+void viewTasksByStatus() {
+    if (taskCount == 0) {
+        printf("📭 No tasks found.\n");
+        return;
+    }
+    
+    printf("\n📋 View Tasks by Status\n");
+    printf("1. Pending Tasks\n");
+    printf("2. Completed Tasks\n");
+    printf("Choose option: ");
+    
+    int choice;
+    scanf("%d", &choice);
+    getchar(); // Clear newline
+    
+    int found = 0;
+    for (int i = 0; i < taskCount; i++) {
+        if ((choice == 1 && !tasks[i].isComplete) || 
+            (choice == 2 && tasks[i].isComplete)) {
+            if (found == 0) {
+                printf("\n╔═══════════════════════════════════════════════════════════════╗\n");
+                printf("║ ID  Title                      Due Date            Status    ║\n");
+                printf("╠═══════════════════════════════════════════════════════════════╣\n");
+            }
+            char status[10];
+            strcpy(status, tasks[i].isComplete ? "✅" : "⏳");
+            char shortTitle[MAX_TITLE_LEN];
+            strcpy(shortTitle, tasks[i].title);
+            if (strlen(shortTitle) > 24) {
+                shortTitle[21] = '\0';
+                strcat(shortTitle, "...");
+            }
+            printf("║ %-3d %-24s %-20s %-10s ║\n",
+                   tasks[i].id, shortTitle, dateToString(tasks[i].dueDate), status);
+            found++;
+        }
+    }
+    
+    if (found == 0) {
+        printf(choice == 1 ? "✅ No pending tasks.\n" : "✅ No completed tasks.\n");
+    } else {
+        printf("╚═══════════════════════════════════════════════════════════════╝\n");
+    }
+}
+
+void markComplete() {
+    if (taskCount == 0) {
+        printf("📭 No tasks found.\n");
+        return;
+    }
+    
+    printf("\n📌 Enter Task ID to mark complete: ");
+    int id;
+    scanf("%d", &id);
+    getchar(); // Clear newline
+    
+    for (int i = 0; i < taskCount; i++) {
+        if (tasks[i].id == id) {
+            if (!tasks[i].isComplete) {
+                tasks[i].isComplete = 1;
+                printf("✅ Task marked as complete!\n");
+                return;
+            } else {
+                printf("⏳ Task is already complete.\n");
+                return;
+            }
+        }
+    }
+    printf("❌ Task with ID %d not found.\n", id);
+}
+
+void deleteTask() {
+    if (taskCount == 0) {
+        printf("📭 No tasks found.\n");
+        return;
+    }
+    
+    printf("\n🗑️ Enter Task ID to delete: ");
+    int id;
+    scanf("%d", &id);
+    getchar(); // Clear newline
+    
+    printf("Are you sure? (y/n): ");
+    char confirm;
+    scanf("%c", &confirm);
+    getchar(); // Clear newline
+    
+    if (confirm != 'y' && confirm != 'Y') {
+        printf("❌ Deletion cancelled.\n");
+        return;
+    }
+    
+    int found = 0;
+    for (int i = 0; i < taskCount; i++) {
+        if (tasks[i].id == id) {
+            found = 1;
+            // Shift all tasks after this one
+            for (int j = i; j < taskCount - 1; j++) {
+                tasks[j] = tasks[j + 1];
+            }
+            taskCount--;
+            printf("🗑️ Task deleted successfully!\n");
+            break;
+        }
+    }
+    
+    if (!found) {
+        printf("❌ Task with ID %d not found.\n", id);
+    }
+}
+
+void searchTasks() {
+    if (taskCount == 0) {
+        printf("📭 No tasks found.\n");
+        return;
+    }
+    
+    printf("\n🔍 Enter keyword to search: ");
+    char keyword[MAX_TITLE_LEN];
+    getchar(); // Clear newline
+    fgets(keyword, MAX_TITLE_LEN, stdin);
+    keyword[strcspn(keyword, "\n")] = '\0';
+    
+    if (strlen(keyword) == 0) {
+        printf("❌ Please enter a search term.\n");
+        return;
+    }
+    
+    int found = 0;
+    for (int i = 0; i < taskCount; i++) {
+        if (strstr(tasks[i].title, keyword) != NULL) {
+            if (found == 0) {
+                printf("\n🔍 Found tasks:\n");
+                printf("╔═══════════════════════════════════════════════════════════════════════════════╗\n");
+                printf("║ ID  Title                      Priority    Due Date            Status    ║\n");
+                printf("╠═══════════════════════════════════════════════════════════════════════════════╣\n");
+            }
+            char status[10];
+            strcpy(status, tasks[i].isComplete ? "✅" : "⏳");
+            printf("║ %-3d %-24s %-10s %-20s %-8s ║\n",
+                   tasks[i].id, tasks[i].title, priorityToString(tasks[i].priority),
+                   dateToString(tasks[i].dueDate), status);
+            found++;
+        }
+    }
+    
+    if (found == 0) {
+        printf("🔍 No tasks found matching '%s'\n", keyword);
+    } else {
+        printf("╚═══════════════════════════════════════════════════════════════════════════════╝\n");
+    }
+}
+
+void sortByPriority() {
+    if (taskCount == 0) {
+        printf("📭 No tasks found.\n");
+        return;
+    }
+    
+    // Bubble sort by priority
+    for (int i = 0; i < taskCount - 1; i++) {
+        for (int j = 0; j < taskCount - i - 1; j++) {
+            if (tasks[j].priority > tasks[j + 1].priority) {
+                Task temp = tasks[j];
+                tasks[j] = tasks[j + 1];
+                tasks[j + 1] = temp;
+            }
+        }
+    }
+    printf("📊 Tasks sorted by priority (HIGH to LOW)\n");
+    viewAllTasks();
+}
+
+void sortByDueDate() {
+    if (taskCount == 0) {
+        printf("📭 No tasks found.\n");
+        return;
+    }
+    
+    // Bubble sort by due date
+    for (int i = 0; i < taskCount - 1; i++) {
+        for (int j = 0; j < taskCount - i - 1; j++) {
+            if (tasks[j].dueDate > tasks[j + 1].dueDate) {
+                Task temp = tasks[j];
+                tasks[j] = tasks[j + 1];
+                tasks[j + 1] = temp;
+            }
+        }
+    }
+    printf("📊 Tasks sorted by due date\n");
+    viewAllTasks();
+}
+
+void showStatistics() {
+    if (taskCount == 0) {
+        printf("📭 No tasks found.\n");
+        return;
+    }
+    
+    int total = taskCount;
+    int completed = 0, pending = 0;
+    int high = 0, medium = 0, low = 0;
+    int overdue = 0;
+    time_t currentTime = time(NULL);
+    
+    for (int i = 0; i < taskCount; i++) {
+        if (tasks[i].isComplete) {
+            completed++;
+        } else {
+            pending++;
+            if (tasks[i].dueDate < currentTime) {
+                overdue++;
+            }
+        }
+        
+        switch(tasks[i].priority) {
+            case PRIORITY_HIGH: high++; break;
+            case PRIORITY_MEDIUM: medium++; break;
+            case PRIORITY_LOW: low++; break;
+        }
+    }
+    
+    printf("\n╔════════════════════════════════════════╗\n");
+    printf("║          TASK STATISTICS              ║\n");
+    printf("╠════════════════════════════════════════╣\n");
+    printf("║ Total Tasks      : %-15d ║\n", total);
+    printf("║ Completed Tasks  : %-15d ║\n", completed);
+    printf("║ Pending Tasks    : %-15d ║\n", pending);
+    printf("╠════════════════════════════════════════╣\n");
+    printf("║ By Priority:                           ║\n");
+    printf("║   🔴 HIGH : %-17d ║\n", high);
+    printf("║   🟡 MEDIUM: %-17d ║\n", medium);
+    printf("║   🟢 LOW  : %-17d ║\n", low);
+    if (overdue > 0) {
+        printf("╠════════════════════════════════════════╣\n");
+        printf("║ ⚠️  Overdue Tasks : %-14d ║\n", overdue);
+    }
+    printf("╚════════════════════════════════════════╝\n");
+}
+
+// ==================== FILE I/O FUNCTIONS ====================
+void saveTasks() {
+    FILE* file = fopen(DATA_FILE, "w");
+    if (file == NULL) {
+        printf("❌ Error saving tasks.\n");
+        return;
+    }
+    
+    fprintf(file, "%d\n", taskCount);
+    fprintf(file, "%d\n", nextId);
+    
+    for (int i = 0; i < taskCount; i++) {
+        fprintf(file, "%d|%s|%s|%d|%ld|%ld|%d\n",
+                tasks[i].id,
+                tasks[i].title,
+                tasks[i].description,
+                tasks[i].priority,
+                tasks[i].createdDate,
+                tasks[i].dueDate,
+                tasks[i].isComplete);
+    }
+    
+    fclose(file);
+    printf("💾 Tasks saved successfully!\n");
+}
+
+void loadTasks() {
+    FILE* file = fopen(DATA_FILE, "r");
+    if (file == NULL) {
+        printf("📝 No saved data found. Starting with empty task list.\n");
+        return;
+    }
+    
+    taskCount = 0;
+    fscanf(file, "%d\n", &taskCount);
+    fscanf(file, "%d\n", &nextId);
+    
+    for (int i = 0; i < taskCount; i++) {
+        char line[500];
+        fgets(line, sizeof(line), file);
+        
+        // Parse line
+        char* token = strtok(line, "|");
+        if (token == NULL) break;
+        tasks[i].id = atoi(token);
+        
+        token = strtok(NULL, "|");
+        if (token == NULL) break;
+        strcpy(tasks[i].title, token);
+        
+        token = strtok(NULL, "|");
+        if (token == NULL) break;
+        strcpy(tasks[i].description, token);
+        
+        token = strtok(NULL, "|");
+        if (token == NULL) break;
+        tasks[i].priority = atoi(token);
+        
+        token = strtok(NULL, "|");
+        if (token == NULL) break;
+        tasks[i].createdDate = atol(token);
+        
+        token = strtok(NULL, "|");
+        if (token == NULL) break;
+        tasks[i].dueDate = atol(token);
+        
+        token = strtok(NULL, "|");
+        if (token == NULL) break;
+        tasks[i].isComplete = atoi(token);
+    }
+    
+    fclose(file);
+    printf("📂 Loaded %d tasks from file.\n", taskCount);
+}
+
+// ==================== MAIN APPLICATION ====================
+void displayMenu() {
+    printf("\n╔════════════════════════════════════════╗\n");
+    printf("║            MAIN MENU                  ║\n");
+    printf("╠════════════════════════════════════════╣\n");
+    printf("║  1. Add Task                         ║\n");
+    printf("║  2. View All Tasks                   ║\n");
+    printf("║  3. View Tasks by Status             ║\n");
+    printf("║  4. Mark Task Complete               ║\n");
+    printf("║  5. Delete Task                      ║\n");
+    printf("║  6. Search Tasks                     ║\n");
+    printf("║  7. Sort Tasks                       ║\n");
+    printf("║  8. View Statistics                  ║\n");
+    printf("║  9. Save Tasks                       ║\n");
+    printf("║ 10. Load Tasks                       ║\n");
+    printf("║ 11. Exit                             ║\n");
+    printf("╚════════════════════════════════════════╝\n");
+    printf("Enter your choice: ");
+}
+
+void sortMenu() {
+    printf("\n📊 Sort Tasks\n");
+    printf("1. Sort by Priority\n");
+    printf("2. Sort by Due Date\n");
+    printf("Choose option: ");
+}
+
+int main() {
+    printf("\n╔════════════════════════════════════════╗\n");
+    printf("║       TO-DO LIST APPLICATION         ║\n");
+    printf("╚════════════════════════════════════════╝\n");
+    
+    loadTasks(); // Load tasks on startup
+    
+    while (1) {
+        displayMenu();
+        int choice;
+        scanf("%d", &choice);
+        getchar(); // Clear newline
+        
+        switch (choice) {
+            case 1:
+                addTask();
+                break;
+            case 2:
+                viewAllTasks();
+                break;
+            case 3:
+                viewTasksByStatus();
+                break;
+            case 4:
+                markComplete();
+                break;
+            case 5:
+                deleteTask();
+                break;
+            case 6:
+                searchTasks();
+                break;
+            case 7:
+                sortMenu();
+                int sortChoice;
+                scanf("%d", &sortChoice);
+                getchar();
+                if (sortChoice == 1) sortByPriority();
+                else if (sortChoice == 2) sortByDueDate();
+                else printf("❌ Invalid choice.\n");
+                break;
+            case 8:
+                showStatistics();
+                break;
+            case 9:
+                saveTasks();
+                break;
+            case 10:
+                loadTasks();
+                break;
+            case 11:
+                printf("\n👋 Thank you for using To-Do List Application!\n");
+                saveTasks(); // Auto-save
+                return 0;
+            default:
+                printf("❌ Invalid choice. Please enter 1-11.\n");
+        }
+        
+        waitForEnter();
+    }
+    
+    return 0;
+}
